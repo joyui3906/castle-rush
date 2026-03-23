@@ -33,7 +33,7 @@ export const GAME_DATA = {
       name: 'Right Castle',
       maxHp: 1000,
       laneSide: 'right',
-      startingBuildings: ['income_mine', 'barracks', 'tank_forge'],
+      startingBuildings: ['income_mine', 'barracks', 'range_tower'],
     },
   },
 
