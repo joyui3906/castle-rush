@@ -10,7 +10,7 @@ function createCastleState(castleDef, startingGold) {
   };
 }
 
-function createUnitState(unitId, side, typeId, unitType, startPosition) {
+function createUnitState(unitId, side, typeId, unitType, startPosition, laneOffset) {
   return {
     id: unitId,
     side,
@@ -23,6 +23,7 @@ function createUnitState(unitId, side, typeId, unitType, startPosition) {
     splashRadius: unitType.splashRadius ?? 0,
     splashRatio: unitType.splashRatio ?? 0,
     position: startPosition,
+    laneOffset,
   };
 }
 
@@ -87,6 +88,12 @@ function applyGoldIncome(state, data) {
   }
 }
 
+function getSpawnLaneOffset(state, data) {
+  const tracks = data.battleLane.tracks ?? [0];
+  const index = state.nextUnitId % tracks.length;
+  return tracks[index];
+}
+
 function spawnUnitForBuilding(state, data, side, buildingTypeId) {
   const buildingType = data.buildingTypes[buildingTypeId];
   if (!buildingType || buildingType.role !== 'spawn') return;
@@ -99,9 +106,10 @@ function spawnUnitForBuilding(state, data, side, buildingTypeId) {
   state.nextUnitId += 1;
 
   const startPosition = side === 'left' ? data.battleLane.leftCastlePosition : data.battleLane.rightCastlePosition;
-  state.units[id] = createUnitState(id, side, unitType.id, unitType, startPosition);
+  const laneOffset = getSpawnLaneOffset(state, data);
+  state.units[id] = createUnitState(id, side, unitType.id, unitType, startPosition, laneOffset);
   state.battleLane.unitIds.push(id);
-  pushEvent(state, `${side} spawned ${unitType.id} (${id})`);
+  pushEvent(state, `${side} spawned ${unitType.id} (${id}) lane ${laneOffset}`);
 }
 
 function collectSpawnRequests(state, data) {
@@ -141,12 +149,15 @@ function getEnemyUnits(units, side) {
 function getClosestEnemyInRange(unit, enemies) {
   let closest = null;
   let closestDistance = Number.POSITIVE_INFINITY;
+  let closestLaneDelta = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
     const distance = Math.abs(enemy.position - unit.position);
-    if (distance <= unit.range && distance < closestDistance) {
+    const laneDelta = Math.abs((enemy.laneOffset ?? 0) - (unit.laneOffset ?? 0));
+    if (distance <= unit.range && (distance < closestDistance || (distance === closestDistance && laneDelta < closestLaneDelta))) {
       closest = enemy;
       closestDistance = distance;
+      closestLaneDelta = laneDelta;
     }
   }
 

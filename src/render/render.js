@@ -18,7 +18,7 @@ function listAliveUnitsBySide(state, side) {
     .map((id) => state.units[id])
     .filter((unit) => unit && unit.side === side)
     .sort((a, b) => a.position - b.position)
-    .map((unit) => `${unit.id}:${unit.typeId}@${unit.position.toFixed(0)}(hp:${unit.hp})`);
+    .map((unit) => `${unit.id}:${unit.typeId}@x${unit.position.toFixed(0)}/y${unit.laneOffset}(hp:${unit.hp})`);
 }
 
 export function render(root, state, data) {
@@ -32,26 +32,35 @@ export function render(root, state, data) {
 
   root.innerHTML = `
     <h2>Single-Lane Battle Simulator</h2>
-    <p>Time: ${Math.floor(state.timeMs / 1000)}s (tick ${state.tick})</p>
-    <p>Lane: ${data.battleLane.id} / length ${data.battleLane.length}</p>
+    <div class="status-grid">
+      <section class="status-card">
+        <h3>Match</h3>
+        <p>Time: ${Math.floor(state.timeMs / 1000)}s (tick ${state.tick})</p>
+        <p>Lane: ${data.battleLane.id} / length ${data.battleLane.length}</p>
+        <p>Tracks: ${(data.battleLane.tracks ?? [0]).join(', ')}</p>
+      </section>
+      <section class="status-card">
+        <h3>Castles</h3>
+        <p>${left.name}: HP ${Math.max(0, left.hp)}/${left.maxHp}, Gold ${left.gold}</p>
+        <p>${right.name}: HP ${Math.max(0, right.hp)}/${right.maxHp}, Gold ${right.gold}</p>
+      </section>
+      <section class="status-card">
+        <h3>Units</h3>
+        <p>Alive - Left: ${unitSummary.left}, Right: ${unitSummary.right}</p>
+        <p>Left units: ${leftUnits.length > 0 ? leftUnits.join(', ') : 'none'}</p>
+        <p>Right units: ${rightUnits.length > 0 ? rightUnits.join(', ') : 'none'}</p>
+      </section>
+      <section class="status-card">
+        <h3>Result</h3>
+        <p>Winner: ${state.winner ?? 'in progress'}</p>
+      </section>
+    </div>
 
-    <h3>Castles</h3>
-    <ul>
-      <li>${left.name}: HP ${Math.max(0, left.hp)}/${left.maxHp}, Gold ${left.gold}, Buildings ${left.buildings.join(', ')}</li>
-      <li>${right.name}: HP ${Math.max(0, right.hp)}/${right.maxHp}, Gold ${right.gold}, Buildings ${right.buildings.join(', ')}</li>
-    </ul>
-
-    <h3>Units</h3>
-    <p>Alive - Left: ${unitSummary.left}, Right: ${unitSummary.right}</p>
-    <p>Left units: ${leftUnits.length > 0 ? leftUnits.join(', ') : 'none'}</p>
-    <p>Right units: ${rightUnits.length > 0 ? rightUnits.join(', ') : 'none'}</p>
-
-    <h3>Result</h3>
-    <p>Winner: ${state.winner ?? 'in progress'}</p>
-
-    <h3>Feedback Log (latest 5)</h3>
-    <ul>
-      ${feedback.length > 0 ? feedback.map((event) => `<li>${event}</li>`).join('') : '<li>none</li>'}
-    </ul>
+    <section class="status-card">
+      <h3>Feedback Log (latest 5)</h3>
+      <ul>
+        ${feedback.length > 0 ? feedback.map((event) => `<li>${event}</li>`).join('') : '<li>none</li>'}
+      </ul>
+    </section>
   `;
 }

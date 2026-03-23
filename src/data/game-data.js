@@ -16,6 +16,7 @@ export const GAME_DATA = {
   battleLane: {
     id: 'lane-1',
     length: 100,
+    tracks: [-1, 0, 1],
     leftCastlePosition: 0,
     rightCastlePosition: 100,
   },
