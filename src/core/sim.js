@@ -40,9 +40,16 @@ export function createInitialState(data) {
       left: createCastleState(data.castles.left, data.config.startingGold),
       right: createCastleState(data.castles.right, data.config.startingGold),
     },
+    events: [],
     units: {},
     nextUnitId: 1,
   };
+}
+
+function pushEvent(state, message) {
+  const event = `[t${state.tick}] ${message}`;
+  state.events.unshift(event);
+  if (state.events.length > 5) state.events.pop();
 }
 
 export function canBuild(state, data, side, buildingTypeId) {
@@ -94,6 +101,7 @@ function spawnUnitForBuilding(state, data, side, buildingTypeId) {
   const startPosition = side === 'left' ? data.battleLane.leftCastlePosition : data.battleLane.rightCastlePosition;
   state.units[id] = createUnitState(id, side, unitType.id, unitType, startPosition);
   state.battleLane.unitIds.push(id);
+  pushEvent(state, `${side} spawned ${unitType.id} (${id})`);
 }
 
 function collectSpawnRequests(state, data) {
@@ -153,6 +161,13 @@ function moveTowardEnemyCastle(unit, data) {
   }
 }
 
+function getEnrageBonus(state) {
+  const startTick = 300;
+  const interval = 60;
+  if (state.tick < startTick) return 0;
+  return Math.floor((state.tick - startTick) / interval) + 1;
+}
+
 function resolveCombatAndMovement(state, data) {
   const unitsSnapshot = state.battleLane.unitIds
     .map((id) => state.units[id])
@@ -160,6 +175,7 @@ function resolveCombatAndMovement(state, data) {
 
   const pendingDamage = new Map();
   const pendingMoves = new Map();
+  const enrageBonus = getEnrageBonus(state);
   const addDamage = (targetId, amount) => {
     pendingDamage.set(targetId, (pendingDamage.get(targetId) ?? 0) + amount);
   };
@@ -167,9 +183,10 @@ function resolveCombatAndMovement(state, data) {
   for (const unit of unitsSnapshot) {
     const enemies = getEnemyUnits(unitsSnapshot, unit.side);
     const enemyInRange = getClosestEnemyInRange(unit, enemies);
+    const totalAttack = unit.attack + enrageBonus;
 
     if (enemyInRange) {
-      addDamage(enemyInRange.id, unit.attack);
+      addDamage(enemyInRange.id, totalAttack);
 
       if (unit.splashRadius > 0 && unit.splashRatio > 0) {
         for (const enemy of enemies) {
@@ -177,7 +194,7 @@ function resolveCombatAndMovement(state, data) {
 
           const splashDistance = Math.abs(enemy.position - enemyInRange.position);
           if (splashDistance <= unit.splashRadius) {
-            addDamage(enemy.id, unit.attack * unit.splashRatio);
+            addDamage(enemy.id, totalAttack * unit.splashRatio);
           }
         }
       }
@@ -192,7 +209,11 @@ function resolveCombatAndMovement(state, data) {
   for (const [targetId, damage] of pendingDamage.entries()) {
     const target = state.units[targetId];
     if (!isAliveUnit(target)) continue;
+    const beforeHp = target.hp;
     target.hp -= damage;
+    if (beforeHp > 0 && target.hp <= 0) {
+      pushEvent(state, `${target.id} defeated`);
+    }
   }
 
   for (const [unitId, nextPosition] of pendingMoves.entries()) {
@@ -210,11 +231,13 @@ function applyCastleDamageFromReachedUnits(state, data) {
     if (unit.side === 'left' && unit.position >= data.battleLane.rightCastlePosition) {
       state.castles.right.hp -= unit.attack;
       unit.hp = 0;
+      pushEvent(state, `${unit.id} hit right castle for ${unit.attack}`);
     }
 
     if (unit.side === 'right' && unit.position <= data.battleLane.leftCastlePosition) {
       state.castles.left.hp -= unit.attack;
       unit.hp = 0;
+      pushEvent(state, `${unit.id} hit left castle for ${unit.attack}`);
     }
   }
 }
@@ -238,21 +261,25 @@ function updateWinner(state, data) {
   const { left, right } = state.castles;
   if (left.hp <= 0 && right.hp <= 0) {
     state.winner = 'draw';
+    pushEvent(state, 'result: draw (both castles destroyed)');
     return;
   }
 
   if (left.hp <= 0) {
     state.winner = 'right';
+    pushEvent(state, 'result: right wins (left castle destroyed)');
     return;
   }
 
   if (right.hp <= 0) {
     state.winner = 'left';
+    pushEvent(state, 'result: left wins (right castle destroyed)');
     return;
   }
 
   if (state.tick >= data.config.maxTicks) {
     state.winner = left.hp === right.hp ? 'draw' : left.hp > right.hp ? 'left' : 'right';
+    pushEvent(state, `result: ${state.winner} by max tick`);
   }
 }
 

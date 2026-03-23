@@ -21,20 +21,6 @@ function listAliveUnitsBySide(state, side) {
     .map((unit) => `${unit.id}:${unit.typeId}@${unit.position.toFixed(0)}(hp:${unit.hp})`);
 }
 
-function listLeadingUnits(state) {
-  const units = state.battleLane.unitIds
-    .map((id) => state.units[id])
-    .filter(Boolean)
-    .sort((a, b) => (a.side === 'left' ? b.position - a.position : a.position - b.position))
-    .slice(0, 6);
-
-  if (units.length === 0) return 'none';
-
-  return units
-    .map((unit) => `${unit.id}:${unit.side}:${unit.typeId}@${unit.position.toFixed(0)}(hp:${unit.hp})`)
-    .join(', ');
-}
-
 export function render(root, state, data) {
   if (!root) return;
 
@@ -42,6 +28,7 @@ export function render(root, state, data) {
   const unitSummary = summarizeUnitsBySide(state);
   const leftUnits = listAliveUnitsBySide(state, 'left');
   const rightUnits = listAliveUnitsBySide(state, 'right');
+  const feedback = state.events ?? [];
 
   root.innerHTML = `
     <h2>Single-Lane Battle Simulator</h2>
@@ -56,11 +43,15 @@ export function render(root, state, data) {
 
     <h3>Units</h3>
     <p>Alive - Left: ${unitSummary.left}, Right: ${unitSummary.right}</p>
-    <p>Sample units: ${listLeadingUnits(state)}</p>
     <p>Left units: ${leftUnits.length > 0 ? leftUnits.join(', ') : 'none'}</p>
     <p>Right units: ${rightUnits.length > 0 ? rightUnits.join(', ') : 'none'}</p>
 
     <h3>Result</h3>
     <p>Winner: ${state.winner ?? 'in progress'}</p>
+
+    <h3>Feedback Log (latest 5)</h3>
+    <ul>
+      ${feedback.length > 0 ? feedback.map((event) => `<li>${event}</li>`).join('') : '<li>none</li>'}
+    </ul>
   `;
 }
