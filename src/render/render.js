@@ -13,6 +13,14 @@ function summarizeUnitsBySide(state) {
   return summary;
 }
 
+function listAliveUnitsBySide(state, side) {
+  return state.battleLane.unitIds
+    .map((id) => state.units[id])
+    .filter((unit) => unit && unit.side === side)
+    .sort((a, b) => a.position - b.position)
+    .map((unit) => `${unit.id}:${unit.typeId}@${unit.position.toFixed(0)}(hp:${unit.hp})`);
+}
+
 function listLeadingUnits(state) {
   const units = state.battleLane.unitIds
     .map((id) => state.units[id])
@@ -32,6 +40,8 @@ export function render(root, state, data) {
 
   const { left, right } = state.castles;
   const unitSummary = summarizeUnitsBySide(state);
+  const leftUnits = listAliveUnitsBySide(state, 'left');
+  const rightUnits = listAliveUnitsBySide(state, 'right');
 
   root.innerHTML = `
     <h2>Single-Lane Battle Simulator</h2>
@@ -47,6 +57,8 @@ export function render(root, state, data) {
     <h3>Units</h3>
     <p>Alive - Left: ${unitSummary.left}, Right: ${unitSummary.right}</p>
     <p>Sample units: ${listLeadingUnits(state)}</p>
+    <p>Left units: ${leftUnits.length > 0 ? leftUnits.join(', ') : 'none'}</p>
+    <p>Right units: ${rightUnits.length > 0 ? rightUnits.join(', ') : 'none'}</p>
 
     <h3>Result</h3>
     <p>Winner: ${state.winner ?? 'in progress'}</p>

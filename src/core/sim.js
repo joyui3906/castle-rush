@@ -98,14 +98,27 @@ function spawnUnitForBuilding(state, data, side, buildingTypeId) {
   state.battleLane.unitIds.push(id);
 }
 
-function spawnUnits(state, data) {
-  const [firstSide, secondSide] = getPrioritySides(state);
-  const orderedCastles = [state.castles[firstSide], state.castles[secondSide]];
+function collectSpawnRequests(state, data) {
+  const requests = [];
 
-  for (const castle of orderedCastles) {
+  for (const side of ['left', 'right']) {
+    const castle = state.castles[side];
     for (const buildingTypeId of castle.buildings) {
-      spawnUnitForBuilding(state, data, castle.laneSide, buildingTypeId);
+      const buildingType = data.buildingTypes[buildingTypeId];
+      if (!buildingType || buildingType.role !== 'spawn') continue;
+      if (state.tick % buildingType.spawnEveryTicks !== 0) continue;
+
+      requests.push({ side, buildingTypeId });
     }
+  }
+
+  return requests;
+}
+
+function spawnUnits(state, data) {
+  const requests = collectSpawnRequests(state, data);
+  for (const request of requests) {
+    spawnUnitForBuilding(state, data, request.side, request.buildingTypeId);
   }
 }
 

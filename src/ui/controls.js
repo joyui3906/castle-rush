@@ -1,15 +1,14 @@
 import { buildBuilding, canBuild } from '../core/sim.js';
 
-const BUILD_OPTIONS = ['income_mine', 'barracks'];
-
 function makeBuildButton({ side, buildingTypeId, cost, onBuild, enabled }) {
   const disabled = enabled ? '' : 'disabled';
   return `<button data-side="${side}" data-building="${buildingTypeId}" ${disabled}>${side} build ${buildingTypeId} (${cost}g)</button>`;
 }
 
 function renderControlsHtml(state, data) {
+  const buildOptions = Object.keys(data.buildingTypes);
   const rows = ['left', 'right'].map((side) => {
-    const buttons = BUILD_OPTIONS.map((buildingTypeId) => {
+    const buttons = buildOptions.map((buildingTypeId) => {
       const cost = data.buildingTypes[buildingTypeId].cost;
       const enabled = canBuild(state, data, side, buildingTypeId);
       return makeBuildButton({ side, buildingTypeId, cost, enabled });
