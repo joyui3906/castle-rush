@@ -24,6 +24,10 @@ function createUnitState(unitId, side, typeId, unitType, startPosition) {
   };
 }
 
+function getPrioritySides(state) {
+  return state.tick % 2 === 0 ? ['right', 'left'] : ['left', 'right'];
+}
+
 export function createInitialState(data) {
   return {
     tick: 0,
@@ -41,6 +45,25 @@ export function createInitialState(data) {
     units: {},
     nextUnitId: 1,
   };
+}
+
+export function canBuild(state, data, side, buildingTypeId) {
+  const castle = state.castles[side];
+  const buildingType = data.buildingTypes[buildingTypeId];
+  if (!castle || !buildingType) return false;
+  return castle.gold >= buildingType.cost;
+}
+
+export function buildBuilding(state, data, side, buildingTypeId) {
+  if (!canBuild(state, data, side, buildingTypeId)) return false;
+
+  const castle = state.castles[side];
+  const buildingType = data.buildingTypes[buildingTypeId];
+
+  castle.gold -= buildingType.cost;
+  castle.buildings.push(buildingTypeId);
+
+  return true;
 }
 
 function getIncomeBonus(castle, data) {
@@ -76,7 +99,10 @@ function spawnUnitForBuilding(state, data, side, buildingTypeId) {
 }
 
 function spawnUnits(state, data) {
-  for (const castle of Object.values(state.castles)) {
+  const [firstSide, secondSide] = getPrioritySides(state);
+  const orderedCastles = [state.castles[firstSide], state.castles[secondSide]];
+
+  for (const castle of orderedCastles) {
     for (const buildingTypeId of castle.buildings) {
       spawnUnitForBuilding(state, data, castle.laneSide, buildingTypeId);
     }
@@ -132,10 +158,18 @@ function resolveUnitTurn(state, data, unit) {
 }
 
 function resolveCombatAndMovement(state, data) {
+  const [firstSide] = getPrioritySides(state);
+
   const orderedUnits = state.battleLane.unitIds
     .map((id) => state.units[id])
     .filter(isAliveUnit)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => {
+      if (a.side !== b.side) {
+        if (a.side === firstSide) return -1;
+        if (b.side === firstSide) return 1;
+      }
+      return a.id.localeCompare(b.id);
+    });
 
   for (const unit of orderedUnits) {
     resolveUnitTurn(state, data, unit);

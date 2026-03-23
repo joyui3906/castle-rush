@@ -1,17 +1,17 @@
-# Minimal stack recommendation
+# 최소 스택 권장안
 
-## Recommended stack
-- HTML + CSS + modern JavaScript (ES modules)
-- Optional dev server: `npx serve .` or `python -m http.server`
-- No backend, database, auth, payments, ranking, or multiplayer
+## 권장 스택
+- HTML + CSS + 최신 JavaScript(ES Modules)
+- 선택적 개발 서버: `npx serve .` 또는 `python -m http.server`
+- 백엔드, DB, 인증, 결제, 랭킹, 멀티플레이는 제외
 
-## Why this is minimal and sufficient
-1. **Smallest possible browser runtime**: runs in any modern browser without build tooling.
-2. **Fast iteration**: one lane, two castles, and deterministic tick logic are easy to tweak in plain JS.
-3. **Clear architecture**: data (`src/data`), simulation (`src/core`), and rendering (`src/render`) are separated.
-4. **Low dependency risk**: no framework lock-in and minimal setup friction for MVP experimentation.
+## 왜 이 구성이 최소이면서 충분한가
+1. **가장 작은 브라우저 실행 단위**: 별도 빌드 도구 없이 최신 브라우저에서 바로 동작합니다.
+2. **빠른 반복 개발**: 단일 라인, 2개 성, 결정론적 틱 로직을 빠르게 조정할 수 있습니다.
+3. **명확한 구조**: 데이터(`src/data`), 시뮬레이션(`src/core`), 렌더링(`src/render`)이 분리됩니다.
+4. **낮은 의존성 리스크**: 프레임워크 종속 없이 MVP 실험 속도를 높일 수 있습니다.
 
-## When to add more tooling later
-Only after MVP battle feel is validated (spawn/combat/economy):
-- Add TypeScript for safer refactors.
-- Add a tiny bundler only if modules/assets become hard to manage.
+## 이후 도구를 추가할 시점
+MVP 전투 감각(스폰/전투/경제) 검증 후에만 고려:
+- 리팩터링 안정성을 위해 TypeScript 도입
+- 모듈/에셋 관리가 복잡해질 때만 작은 번들러 추가

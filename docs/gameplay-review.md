@@ -1,63 +1,63 @@
-# Gameplay Review (Current Prototype)
+# 게임플레이 리뷰 (현재 프로토타입)
 
-## Scope reviewed
+## 검토 범위
 - `src/data/game-data.js`
 - `src/core/sim.js`
 - `src/render/render.js`
-- deterministic simulation run from Node
+- Node 기반 결정론 시뮬레이션 실행 결과
 
-## Findings
+## 진단 결과
 
-### 1) Snowball risks
-1. **No comeback pressure once a side wins lane control.**
-   - Units only move forward and never retreat/reposition, so an advantage tends to compound until castle contact.
-   - Relevant logic: movement + castle-hit removal cycle (`moveTowardEnemyCastle`, `applyCastleDamageFromReachedUnits`).
-2. **Economy has no spending sink yet.**
-   - Gold grows forever and cannot be converted into strategic choices, so there is no economic recovery decision.
+### 1) 스노우볼 리스크
+1. **한쪽이 라인 우위를 잡으면 역전 압력이 부족함**
+   - 유닛이 전진만 하고 후퇴/재배치가 없어, 우세가 성 타격까지 누적되는 구조입니다.
+   - 관련 로직: `moveTowardEnemyCastle`, `applyCastleDamageFromReachedUnits`
+2. **경제 자원 소모처가 부족함**
+   - 골드는 계속 누적되지만 전략적 지출 선택이 부족해 경제 회복 판단이 약합니다.
 
-### 2) Boring states
-1. **Early match has repetitive cadence.**
-   - Same buildings auto-spawn on fixed intervals every game.
-2. **Mid-lane stalemates can become passive watching.**
-   - Units stand and trade with no ability usage, targeting variety, or pacing shifts.
+### 2) 지루해질 수 있는 구간
+1. **초반 리듬이 반복적임**
+   - 같은 건물에서 고정 주기로 자동 스폰되어 매 게임 패턴이 유사해집니다.
+2. **중앙 교전이 정체되기 쉬움**
+   - 스킬/타깃 우선순위/페이싱 변화가 적어 관전 체감이 단조로울 수 있습니다.
 
-### 3) Dominant strategies
-1. **Current default setup is effectively solved.**
-   - With current starting buildings and stats, left side wins every run tested (3/3) at tick 287 with 1000 HP remaining.
-2. **Static openings dominate.**
-   - Starting buildings are fixed and asymmetrical, and there are no player actions to counter or adapt.
+### 3) 지배 전략 가능성
+1. **현재 기본 세팅은 사실상 해법에 가까움**
+   - 테스트 기준 왼쪽 팀이 반복적으로 승리합니다(3/3, tick 287, 왼쪽 성 HP 1000 유지).
+2. **고정 오프닝의 지배력**
+   - 시작 건물 구성이 고정/비대칭이며, 이를 상쇄할 플레이어 선택지가 제한적입니다.
 
-### 4) Unclear feedback
-1. **No lane-front visualization.**
-   - UI shows sample unit text, but not a clear front line or pressure swing.
-2. **No event feedback for damage spikes.**
-   - Castle hits and unit deaths are not surfaced as explicit events.
-3. **No reason display for winner.**
-   - End state says winner but not whether by castle destruction or max tick tie-break.
+### 4) 피드백의 불명확성
+1. **전선(라인 프론트) 가시성이 부족함**
+   - 샘플 유닛 텍스트는 보이지만 누가 밀고 있는지 직관성이 낮습니다.
+2. **핵심 이벤트 피드백 부재**
+   - 성 피격, 유닛 처치가 명시적 이벤트로 드러나지 않습니다.
+3. **승리 원인 표시 부족**
+   - 승자는 표시되지만 성 파괴/최대 틱 판정인지 이유가 보이지 않습니다.
 
-## Smallest gameplay changes to improve feel (proposed)
+## 최소 변경으로 체감 개선하는 제안
 
-1. **Add tiny spawn jitter by side/building (+/- 1 tick deterministic offset).**
-   - Keep deterministic by deriving offset from `buildingTypeId + side` hash.
-   - Effect: breaks perfect wave mirroring and reduces solved outcomes with minimal code.
+1. **작은 스폰 지터 추가(결정론 유지, ±1 tick)**
+   - `buildingTypeId + side` 기반 해시로 고정 오프셋 계산.
+   - 효과: 완전한 미러 웨이브를 줄여 고정 승패 패턴 완화.
 
-2. **Add "castle defense zone" bonus near each castle (+2 attack within last 15 lane units).**
-   - Effect: creates comeback friction and slows hard snowball at the gate.
+2. **성 인근 방어 보정 추가(마지막 15 구간에서 공격력 +2)**
+   - 효과: 성문 앞 스노우볼 완화, 역전 여지 증가.
 
-3. **Add one low-cost fallback spawn when castle HP < 40% (every 10 ticks).**
-   - Example: auto-spawn `spearman` for the losing side only.
-   - Effect: introduces comeback moments without adding UI/build controls yet.
+3. **성 HP 40% 미만 시 보조 스폰 1종 추가(10 tick마다)**
+   - 예: 열세 진영에 `spearman` 자동 스폰.
+   - 효과: UI/빌드 시스템 확대 없이 역전 모멘텀 제공.
 
-4. **Expose a compact event log of last 5 events in renderer.**
-   - Events: unit spawned, unit killed, castle hit, winner reason.
-   - Effect: much clearer feedback while keeping render simple.
+4. **최근 이벤트 5개 로그 표시**
+   - 이벤트: 스폰, 처치, 성 피격, 승리 이유.
+   - 효과: 전투 흐름 이해도 개선.
 
-5. **Show lane pressure metric in UI:**
-   - `pressure = avg(left unit position) - avg(right unit position)` (or alive-count delta).
-   - Effect: makes "who is pushing" immediately readable.
+5. **라인 압력 지표 추가**
+   - 예: `pressure = avg(left position) - avg(right position)` 또는 생존 수 차이.
+   - 효과: 누가 라인을 미는지 즉시 파악 가능.
 
-## Why these are minimal
-- No backend or networking changes.
-- No new dependencies.
-- No change to core architecture (data/sim/render separation remains).
-- Each item can be implemented incrementally in small commits.
+## 왜 이 변경이 최소 범위인가
+- 백엔드/네트워크 추가 없음
+- 새 의존성 추가 없음
+- 데이터/시뮬레이션/렌더 구조 유지
+- 작은 커밋 단위로 단계적 적용 가능

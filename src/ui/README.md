@@ -1,4 +1,9 @@
-# UI folder
+# UI 폴더
 
-Reserved for small input handlers and controls (build buttons, speed toggle, restart).
-Keep UI wiring separate from simulation and data.
+입력 처리와 컨트롤 관련 코드를 둡니다.
+
+현재 구성:
+- `controls.js`: 좌/우의 건설 버튼(`income_mine`, `barracks`)을 시뮬레이션 액션과 연결
+
+원칙:
+- UI 연결 코드는 시뮬레이션/데이터 로직과 분리해서 유지
