@@ -1,27 +1,27 @@
-# Castle Rush One Pager
+# Castle Rush 원페이지
 
-## Core concept
-Build structures that automatically spawn units.
-Units march down one lane and attack the enemy castle.
-Destroy the enemy castle first.
+## 핵심 콘셉트
+건물을 지으면 유닛이 자동으로 생성됩니다.
+유닛은 하나의 라인을 따라 전진하며 상대 성을 공격합니다.
+상대 성을 먼저 파괴하면 승리합니다.
 
-## MVP goals
-- Single-player or local simulation first
-- No real-time online multiplayer yet
-- Match length target: 5 to 10 minutes
-- Focus on economic choice vs combat strength
+## MVP 목표
+- 먼저 싱글 플레이 또는 로컬 시뮬레이션으로 시작
+- 실시간 온라인 멀티플레이는 아직 제외
+- 한 판 플레이 시간 목표: 5~10분
+- 경제 선택과 전투 전력의 균형에 집중
 
-## MVP systems
-- Gold income
-- Income building
-- Melee / ranged / tank basic counters
-- Castle HP
-- Auto spawn
-- Auto combat
+## MVP 시스템
+- 골드 수급
+- 수입 건물
+- 근접 / 원거리 / 탱커 기본 상성
+- 성 HP
+- 자동 스폰
+- 자동 전투
 
-## Success check
-The prototype is successful if:
-- Watching battles feels satisfying
-- Pushing the lane feels clear
-- Economy vs power choices feel meaningful
-- Comebacks feel possible
+## 성공 기준
+프로토타입이 성공적이라고 볼 수 있는 기준:
+- 전투를 지켜보는 재미가 있다
+- 라인을 미는 흐름이 명확하다
+- 경제 vs 전투 선택이 의미 있게 느껴진다
+- 역전 가능성이 보인다
