@@ -24,10 +24,6 @@ function createUnitState(unitId, side, typeId, unitType, startPosition) {
   };
 }
 
-function getPrioritySides(state) {
-  return state.tick % 2 === 0 ? ['right', 'left'] : ['left', 'right'];
-}
-
 export function createInitialState(data) {
   return {
     tick: 0,
@@ -126,10 +122,9 @@ function isAliveUnit(unit) {
   return Boolean(unit && unit.hp > 0);
 }
 
-function getEnemyUnits(state, side) {
+function getEnemyUnits(units, side) {
   const enemySide = side === 'left' ? 'right' : 'left';
-  return state.battleLane.unitIds
-    .map((id) => state.units[id])
+  return units
     .filter((unit) => isAliveUnit(unit) && unit.side === enemySide);
 }
 
@@ -156,36 +151,38 @@ function moveTowardEnemyCastle(unit, data) {
   }
 }
 
-function resolveUnitTurn(state, data, unit) {
-  if (!isAliveUnit(unit)) return;
+function resolveCombatAndMovement(state, data) {
+  const unitsSnapshot = state.battleLane.unitIds
+    .map((id) => state.units[id])
+    .filter(isAliveUnit);
 
-  const enemies = getEnemyUnits(state, unit.side);
-  const enemyInRange = getClosestEnemyInRange(unit, enemies);
+  const pendingDamage = new Map();
+  const pendingMoves = new Map();
 
-  if (enemyInRange) {
-    enemyInRange.hp -= unit.attack;
-    return;
+  for (const unit of unitsSnapshot) {
+    const enemies = getEnemyUnits(unitsSnapshot, unit.side);
+    const enemyInRange = getClosestEnemyInRange(unit, enemies);
+
+    if (enemyInRange) {
+      pendingDamage.set(enemyInRange.id, (pendingDamage.get(enemyInRange.id) ?? 0) + unit.attack);
+      continue;
+    }
+
+    const moved = { ...unit };
+    moveTowardEnemyCastle(moved, data);
+    pendingMoves.set(unit.id, moved.position);
   }
 
-  moveTowardEnemyCastle(unit, data);
-}
+  for (const [targetId, damage] of pendingDamage.entries()) {
+    const target = state.units[targetId];
+    if (!isAliveUnit(target)) continue;
+    target.hp -= damage;
+  }
 
-function resolveCombatAndMovement(state, data) {
-  const [firstSide] = getPrioritySides(state);
-
-  const orderedUnits = state.battleLane.unitIds
-    .map((id) => state.units[id])
-    .filter(isAliveUnit)
-    .sort((a, b) => {
-      if (a.side !== b.side) {
-        if (a.side === firstSide) return -1;
-        if (b.side === firstSide) return 1;
-      }
-      return a.id.localeCompare(b.id);
-    });
-
-  for (const unit of orderedUnits) {
-    resolveUnitTurn(state, data, unit);
+  for (const [unitId, nextPosition] of pendingMoves.entries()) {
+    const unit = state.units[unitId];
+    if (!isAliveUnit(unit)) continue;
+    unit.position = nextPosition;
   }
 }
 
