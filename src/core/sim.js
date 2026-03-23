@@ -20,6 +20,8 @@ function createUnitState(unitId, side, typeId, unitType, startPosition) {
     attack: unitType.attack,
     range: unitType.range,
     speed: unitType.speed,
+    splashRadius: unitType.splashRadius ?? 0,
+    splashRatio: unitType.splashRatio ?? 0,
     position: startPosition,
   };
 }
@@ -158,13 +160,27 @@ function resolveCombatAndMovement(state, data) {
 
   const pendingDamage = new Map();
   const pendingMoves = new Map();
+  const addDamage = (targetId, amount) => {
+    pendingDamage.set(targetId, (pendingDamage.get(targetId) ?? 0) + amount);
+  };
 
   for (const unit of unitsSnapshot) {
     const enemies = getEnemyUnits(unitsSnapshot, unit.side);
     const enemyInRange = getClosestEnemyInRange(unit, enemies);
 
     if (enemyInRange) {
-      pendingDamage.set(enemyInRange.id, (pendingDamage.get(enemyInRange.id) ?? 0) + unit.attack);
+      addDamage(enemyInRange.id, unit.attack);
+
+      if (unit.splashRadius > 0 && unit.splashRatio > 0) {
+        for (const enemy of enemies) {
+          if (enemy.id === enemyInRange.id) continue;
+
+          const splashDistance = Math.abs(enemy.position - enemyInRange.position);
+          if (splashDistance <= unit.splashRadius) {
+            addDamage(enemy.id, unit.attack * unit.splashRatio);
+          }
+        }
+      }
       continue;
     }
 

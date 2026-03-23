@@ -66,6 +66,13 @@ export const GAME_DATA = {
       spawnUnitTypeId: 'guardian',
       spawnEveryTicks: 8,
     },
+    splash_tower: {
+      id: 'splash_tower',
+      role: 'spawn',
+      cost: 130,
+      spawnUnitTypeId: 'mage',
+      spawnEveryTicks: 10,
+    },
   },
 
   unitTypes: {
@@ -74,6 +81,6 @@ export const GAME_DATA = {
     guardian: { id: 'guardian', role: 'tank', maxHp: 150, attack: 8, range: 1, speed: 1 },
     spearman: { id: 'spearman', role: 'melee', maxHp: 80, attack: 13, range: 2, speed: 2 },
     scout: { id: 'scout', role: 'light', maxHp: 50, attack: 9, range: 1, speed: 3 },
-    mage: { id: 'mage', role: 'ranged', maxHp: 55, attack: 16, range: 6, speed: 2 },
+    mage: { id: 'mage', role: 'ranged', maxHp: 55, attack: 16, range: 6, speed: 2, splashRadius: 3, splashRatio: 0.5 },
   },
 };
