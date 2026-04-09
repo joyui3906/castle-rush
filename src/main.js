@@ -22,6 +22,9 @@ const simulation = {
 };
 let timerId = null;
 let matchClient = null;
+const pendingNetworkCommands = new Map();
+const COMMAND_ACK_TIMEOUT_MS = 1200;
+const COMMAND_MAX_RETRY = 3;
 
 function applyRemoteState(remoteState) {
   if (!remoteState) return;
@@ -33,6 +36,15 @@ function applyRemoteState(remoteState) {
   state.events = remoteState.events;
   state.units = remoteState.units;
   state.nextUnitId = remoteState.nextUnitId;
+}
+
+function updatePendingCommandCount() {
+  state.ui.network.pendingCommandCount = pendingNetworkCommands.size;
+}
+
+function clearPendingNetworkCommands() {
+  pendingNetworkCommands.clear();
+  updatePendingCommandCount();
 }
 
 const rerender = () => {
@@ -73,6 +85,7 @@ function ensureClient() {
       state.ui.network.connecting = false;
       state.ui.network.connected = true;
       state.ui.network.lastError = null;
+      state.ui.network.matchStatus = 'connected';
       matchClient.join({
         matchId: state.ui.network.matchId,
         playerId: state.ui.network.playerId,
@@ -84,17 +97,25 @@ function ensureClient() {
       state.ui.network.connecting = false;
       state.ui.network.ready = false;
       state.ui.network.side = null;
+      state.ui.network.matchStatus = 'offline';
+      clearPendingNetworkCommands();
       rerenderControls();
     },
     onError: () => {
       state.ui.network.connecting = false;
       state.ui.network.connected = false;
       state.ui.network.lastError = 'socket error';
+      state.ui.network.matchStatus = 'error';
       rerenderControls();
     },
     onMessage: (message) => {
       if (message.type === 'joined') {
         state.ui.network.side = message.side;
+        state.ui.network.matchStatus = 'joined';
+        if (Number.isInteger(message.nextCommandSeq)) {
+          state.ui.network.commandSeq = Math.max(0, message.nextCommandSeq - 1);
+        }
+        matchClient.requestSnapshot();
         rerenderControls();
         return;
       }
@@ -102,11 +123,31 @@ function ensureClient() {
       if (message.type === 'state') {
         applyRemoteState(message.state);
         state.winner = message.snapshot?.winner ?? state.winner;
+        state.ui.network.matchStatus = message.snapshot?.status ?? state.ui.network.matchStatus;
+        state.ui.network.lastStateTick = message.snapshot?.stateTick ?? state.tick;
+        state.ui.network.lastServerTick = message.snapshot?.serverTick ?? 0;
+        state.ui.network.lastSnapshotAtMs = Date.now();
         rerender();
+        rerenderControls();
+        return;
+      }
+
+      if (message.type === 'command_ack') {
+        const pending = pendingNetworkCommands.get(message.seq);
+        if (pending) {
+          state.ui.network.rttMs = Date.now() - pending.sentAtMs;
+          pendingNetworkCommands.delete(message.seq);
+          updatePendingCommandCount();
+          rerenderControls();
+        }
         return;
       }
 
       if (message.type === 'error') {
+        if (Number.isInteger(message.seq)) {
+          pendingNetworkCommands.delete(message.seq);
+          updatePendingCommandCount();
+        }
         state.ui.network.lastError = message.message ?? 'server error';
         rerenderControls();
       }
@@ -144,10 +185,12 @@ const renderControls = setupControls(controlsRoot, state, GAME_DATA, () => {
         matchClient.disconnect();
         matchClient = null;
       }
+      clearPendingNetworkCommands();
       state.ui.network.connected = false;
       state.ui.network.connecting = false;
       state.ui.network.side = null;
       state.ui.network.ready = false;
+      state.ui.network.matchStatus = 'offline';
     }
   },
   connectNetwork: async () => {
@@ -167,6 +210,7 @@ const renderControls = setupControls(controlsRoot, state, GAME_DATA, () => {
     if (!matchClient) return;
     matchClient.disconnect();
     matchClient = null;
+    clearPendingNetworkCommands();
   },
   toggleNetworkReady: () => {
     if (!matchClient || !state.ui.network.connected) return;
@@ -182,9 +226,40 @@ const renderControls = setupControls(controlsRoot, state, GAME_DATA, () => {
     if (!networkMode) return false;
     if (!matchClient || !state.ui.network.connected) return false;
     state.ui.network.commandSeq += 1;
-    return matchClient.command(command, state.ui.network.commandSeq);
+    const seq = state.ui.network.commandSeq;
+    const sent = matchClient.command(command, seq);
+    if (!sent) return false;
+    pendingNetworkCommands.set(seq, {
+      command,
+      sentAtMs: Date.now(),
+      retries: 0,
+    });
+    updatePendingCommandCount();
+    return true;
   },
 });
+
+if (networkMode) {
+  setInterval(() => {
+    if (!matchClient || !state.ui.network.connected) return;
+    const now = Date.now();
+    for (const [seq, pending] of pendingNetworkCommands.entries()) {
+      if (now - pending.sentAtMs < COMMAND_ACK_TIMEOUT_MS) continue;
+      if (pending.retries >= COMMAND_MAX_RETRY) {
+        pendingNetworkCommands.delete(seq);
+        state.ui.network.lastError = `command seq ${seq} timed out`;
+        updatePendingCommandCount();
+        rerenderControls();
+        continue;
+      }
+      const resent = matchClient.command(pending.command, seq);
+      if (!resent) continue;
+      pending.retries += 1;
+      pending.sentAtMs = now;
+    }
+    updatePendingCommandCount();
+  }, 250);
+}
 
 rerender();
 rerenderControls();

@@ -4,6 +4,7 @@ import {
   createMatch,
   joinMatch,
   setPlayerReady,
+  disconnectPlayer,
   enqueuePlayerCommand,
   advanceMatchTick,
   createMatchSnapshot,
@@ -85,6 +86,36 @@ runTest('out-of-order sequence is rejected', () => {
     type: 'build',
     payload: { side: 'left', buildingTypeId: 'range_tower', slotIndex: 1 },
   }, 1), false);
+});
+
+runTest('rejoin restores side and keeps sequence continuity', () => {
+  const match = createMatch({ data: GAME_DATA });
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(joinMatch(match, 'p2'), 'right');
+  setPlayerReady(match, 'p1', true);
+  setPlayerReady(match, 'p2', true);
+
+  assert.equal(enqueuePlayerCommand(match, 'p1', {
+    type: 'build',
+    payload: { side: 'left', buildingTypeId: 'barracks', slotIndex: 0 },
+  }, 1), true);
+
+  disconnectPlayer(match, 'p1');
+  assert.equal(match.players.left.connected, false);
+
+  // Same player id rejoins and keeps left side.
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(match.players.left.connected, true);
+
+  // Duplicate seq is idempotent-accepted (ack-loss case), but older than last is rejected.
+  assert.equal(enqueuePlayerCommand(match, 'p1', {
+    type: 'build',
+    payload: { side: 'left', buildingTypeId: 'range_tower', slotIndex: 1 },
+  }, 1), true);
+  assert.equal(enqueuePlayerCommand(match, 'p1', {
+    type: 'build',
+    payload: { side: 'left', buildingTypeId: 'range_tower', slotIndex: 1 },
+  }, 2), true);
 });
 
 runTest('snapshot exposes minimal match info', () => {

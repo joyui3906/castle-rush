@@ -115,6 +115,14 @@ function renderControlsHtml(state, data, simControl) {
       <span>status: ${networkInfo?.connected ? `connected (${networkInfo?.side ?? 'spectator'})` : networkInfo?.connecting ? 'connecting' : 'offline'}</span>
       ${networkInfo?.lastError ? `<span>error: ${networkInfo.lastError}</span>` : ''}
     </div>
+    <div class="controls-row">
+      <span>matchStatus: ${networkInfo?.matchStatus ?? 'unknown'}</span>
+      <span>serverTick: ${networkInfo?.lastServerTick ?? 0}</span>
+      <span>stateTick: ${networkInfo?.lastStateTick ?? 0}</span>
+      <span>rtt: ${networkInfo?.rttMs !== null && networkInfo?.rttMs !== undefined ? `${networkInfo.rttMs}ms` : '-'}</span>
+      <span>pendingCmd: ${networkInfo?.pendingCommandCount ?? 0}</span>
+      <span>lastSnapshot: ${networkInfo?.lastSnapshotAtMs ? `${Math.max(0, Math.floor((Date.now() - networkInfo.lastSnapshotAtMs) / 1000))}s ago` : '-'}</span>
+    </div>
   ` : '';
 
   return `

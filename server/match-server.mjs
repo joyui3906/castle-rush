@@ -4,6 +4,7 @@ import {
   createMatch,
   joinMatch,
   setPlayerReady,
+  disconnectPlayer,
   enqueuePlayerCommand,
   advanceMatchTick,
   createMatchSnapshot,
@@ -95,6 +96,7 @@ function handleJoin(ws, msg) {
     side,
     playerId,
     tickRateMs: match.tickRateMs,
+    nextCommandSeq: (match.players[side]?.lastAcceptedSeq ?? -1) + 1,
   });
 
   broadcastMatch(match, {
@@ -140,7 +142,7 @@ function handleCommand(ws, msg) {
 
   const accepted = enqueuePlayerCommand(match, session.playerId, msg.command, msg.seq);
   if (!accepted) {
-    sendJson(ws, { type: 'error', message: 'command rejected' });
+    sendJson(ws, { type: 'error', message: 'command rejected', seq: msg.seq });
     return;
   }
   sendJson(ws, { type: 'command_ack', seq: msg.seq });
@@ -200,7 +202,7 @@ function handleDisconnect(ws) {
   if (!match) return;
 
   clearClient(match, ws);
-  setPlayerReady(match, session.playerId, false);
+  disconnectPlayer(match, session.playerId);
   broadcastMatch(match, {
     type: 'state',
     ...getPublicMatchPayload(match),

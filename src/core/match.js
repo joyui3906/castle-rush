@@ -14,6 +14,10 @@ function createPlayerSlot(playerId) {
   };
 }
 
+function getPlayerBySide(match, side) {
+  return match.players[side] ?? null;
+}
+
 function getSideByPlayerId(match, playerId) {
   if (match.players.left?.playerId === playerId) return 'left';
   if (match.players.right?.playerId === playerId) return 'right';
@@ -54,8 +58,11 @@ export function createMatch({
 }
 
 export function joinMatch(match, playerId) {
-  if (match.players.left?.playerId === playerId || match.players.right?.playerId === playerId) {
-    return getSideByPlayerId(match, playerId);
+  const existingSide = getSideByPlayerId(match, playerId);
+  if (existingSide) {
+    const existingPlayer = getPlayerBySide(match, existingSide);
+    if (existingPlayer) existingPlayer.connected = true;
+    return existingSide;
   }
 
   if (!match.players.left) {
@@ -85,6 +92,15 @@ export function setPlayerReady(match, playerId, ready) {
   return true;
 }
 
+export function disconnectPlayer(match, playerId) {
+  const side = getSideByPlayerId(match, playerId);
+  if (!side) return false;
+  const player = getPlayerBySide(match, side);
+  if (!player) return false;
+  player.connected = false;
+  return true;
+}
+
 export function enqueuePlayerCommand(match, playerId, command, seq = null) {
   const side = getSideByPlayerId(match, playerId);
   if (!side) return false;
@@ -93,7 +109,12 @@ export function enqueuePlayerCommand(match, playerId, command, seq = null) {
 
   const player = match.players[side];
   if (!player) return false;
-  if (typeof seq !== 'number' || !Number.isInteger(seq) || seq <= player.lastAcceptedSeq) return false;
+  if (typeof seq !== 'number' || !Number.isInteger(seq)) return false;
+  if (seq < player.lastAcceptedSeq) return false;
+  if (seq === player.lastAcceptedSeq) {
+    // Idempotent duplicate packet (likely ack loss): treat as accepted without requeue.
+    return true;
+  }
   player.lastAcceptedSeq = seq;
 
   player.pendingCommands.push(command);
@@ -134,10 +155,14 @@ export function createMatchSnapshot(match) {
       left: match.players.left ? {
         playerId: match.players.left.playerId,
         ready: match.players.left.ready,
+        connected: match.players.left.connected,
+        lastAcceptedSeq: match.players.left.lastAcceptedSeq,
       } : null,
       right: match.players.right ? {
         playerId: match.players.right.playerId,
         ready: match.players.right.ready,
+        connected: match.players.right.connected,
+        lastAcceptedSeq: match.players.right.lastAcceptedSeq,
       } : null,
     },
   };
