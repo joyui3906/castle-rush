@@ -1,12 +1,22 @@
 import { createInitialState, enqueueCommand, tick } from './sim.js';
+import { NETWORK_MESSAGE_TEXT } from '../net/network-messages.js';
 
 function cloneData(data) {
   return JSON.parse(JSON.stringify(data));
 }
 
+function createSessionToken() {
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function setCommandRejectReason(match, reason) {
+  match.__lastCommandRejectReason = reason || null;
+}
+
 function createPlayerSlot(playerId) {
   return {
     playerId,
+    sessionToken: createSessionToken(),
     ready: false,
     connected: true,
     pendingCommands: [],
@@ -24,17 +34,37 @@ function getSideByPlayerId(match, playerId) {
   return null;
 }
 
-function canAcceptCommand(match, playerId, command) {
-  if (!command?.type) return false;
+function getCommandRejectReason(match, playerId, command) {
+  if (!command?.type) {
+    return NETWORK_MESSAGE_TEXT.COMMAND_REQUIRED;
+  }
   const side = getSideByPlayerId(match, playerId);
-  if (!side) return false;
+  if (!side) {
+    return NETWORK_MESSAGE_TEXT.NOT_IN_MATCH;
+  }
 
   // Side-bound commands must match the command side to prevent spoofing.
   if (command.type === 'build' || command.type === 'sell') {
-    return command.payload?.side === side;
+    const payload = command.payload;
+    if (!payload || typeof payload.side !== 'string' || payload.side !== side) {
+      return NETWORK_MESSAGE_TEXT.INVALID_COMMAND_SIDE;
+    }
+
+    if (typeof payload.slotIndex !== 'number' || !Number.isInteger(payload.slotIndex) || payload.slotIndex < 0) {
+      return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
+    }
+
+    if (command.type === 'build') {
+      if (typeof payload.buildingTypeId !== 'string' || payload.buildingTypeId.length === 0) {
+        return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
+      }
+      return null;
+    }
+
+    return null;
   }
 
-  return true;
+  return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
 }
 
 export function createMatch({
@@ -102,17 +132,38 @@ export function disconnectPlayer(match, playerId) {
 }
 
 export function enqueuePlayerCommand(match, playerId, command, seq = null) {
+  setCommandRejectReason(match, null);
   const side = getSideByPlayerId(match, playerId);
-  if (!side) return false;
-  if (match.status !== 'running') return false;
-  if (!canAcceptCommand(match, playerId, command)) return false;
+  if (!side) {
+    setCommandRejectReason(match, NETWORK_MESSAGE_TEXT.NOT_IN_MATCH);
+    return false;
+  }
+  if (match.status !== 'running') {
+    setCommandRejectReason(match, NETWORK_MESSAGE_TEXT.MATCH_NOT_RUNNING);
+    return false;
+  }
+  const commandRejectReason = getCommandRejectReason(match, playerId, command);
+  if (commandRejectReason) {
+    setCommandRejectReason(match, commandRejectReason);
+    return false;
+  }
 
   const player = match.players[side];
-  if (!player) return false;
-  if (typeof seq !== 'number' || !Number.isInteger(seq)) return false;
-  if (seq < player.lastAcceptedSeq) return false;
+  if (!player) {
+    setCommandRejectReason(match, NETWORK_MESSAGE_TEXT.PLAYER_MISSING);
+    return false;
+  }
+  if (typeof seq !== 'number' || !Number.isInteger(seq)) {
+    setCommandRejectReason(match, NETWORK_MESSAGE_TEXT.INVALID_COMMAND_SEQ);
+    return false;
+  }
+  if (seq < player.lastAcceptedSeq) {
+    setCommandRejectReason(match, NETWORK_MESSAGE_TEXT.STALE_COMMAND_SEQ);
+    return false;
+  }
   if (seq === player.lastAcceptedSeq) {
     // Idempotent duplicate packet (likely ack loss): treat as accepted without requeue.
+    setCommandRejectReason(match, null);
     return true;
   }
   player.lastAcceptedSeq = seq;

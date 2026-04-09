@@ -38,6 +38,49 @@ runTest('match starts when both ready', () => {
   assert.equal(match.status, 'running');
 });
 
+runTest('third player is rejected when match is full', () => {
+  const match = createMatch({ data: GAME_DATA });
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(joinMatch(match, 'p2'), 'right');
+  assert.equal(joinMatch(match, 'p3'), null);
+});
+
+runTest('disconnected player keeps side and prevents third player join', () => {
+  const match = createMatch({ data: GAME_DATA });
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(joinMatch(match, 'p2'), 'right');
+  assert.equal(disconnectPlayer(match, 'p1'), true);
+  assert.equal(match.players.left.connected, false);
+  assert.equal(disconnectPlayer(match, 'p1'), true);
+  assert.equal(joinMatch(match, 'p3'), null);
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(match.players.left.connected, true);
+});
+
+runTest('commands are rejected before match starts', () => {
+  const match = createMatch({ data: GAME_DATA });
+  joinMatch(match, 'p1');
+  joinMatch(match, 'p2');
+  const accepted = enqueuePlayerCommand(match, 'p1', {
+    type: 'build',
+    payload: { side: 'left', buildingTypeId: 'barracks', slotIndex: 0 },
+  }, 1);
+  assert.equal(accepted, false);
+});
+
+runTest('commands from unknown player are rejected', () => {
+  const match = createMatch({ data: GAME_DATA });
+  joinMatch(match, 'p1');
+  joinMatch(match, 'p2');
+  setPlayerReady(match, 'p1', true);
+  setPlayerReady(match, 'p2', true);
+  const accepted = enqueuePlayerCommand(match, 'unknown', {
+    type: 'build',
+    payload: { side: 'left', buildingTypeId: 'barracks', slotIndex: 0 },
+  }, 1);
+  assert.equal(accepted, false);
+});
+
 runTest('side spoofed command is rejected', () => {
   const match = createMatch({ data: GAME_DATA });
   joinMatch(match, 'p1');
@@ -116,6 +159,34 @@ runTest('rejoin restores side and keeps sequence continuity', () => {
     type: 'build',
     payload: { side: 'left', buildingTypeId: 'range_tower', slotIndex: 1 },
   }, 2), true);
+});
+
+runTest('reconnect churn keeps side and sequence continuity', () => {
+  const match = createMatch({ data: GAME_DATA });
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(joinMatch(match, 'p2'), 'right');
+  setPlayerReady(match, 'p1', true);
+  setPlayerReady(match, 'p2', true);
+
+  const commandA = {
+    type: 'build',
+    payload: { side: 'left', buildingTypeId: 'barracks', slotIndex: 0 },
+  };
+  assert.equal(enqueuePlayerCommand(match, 'p1', commandA, 1), true);
+
+  disconnectPlayer(match, 'p1');
+  disconnectPlayer(match, 'p1');
+  assert.equal(joinMatch(match, 'p1'), 'left');
+
+  const commandB = {
+    type: 'sell',
+    payload: { side: 'left', slotIndex: 0 },
+  };
+  assert.equal(enqueuePlayerCommand(match, 'p1', commandB, 1), true);
+
+  disconnectPlayer(match, 'p1');
+  assert.equal(joinMatch(match, 'p1'), 'left');
+  assert.equal(enqueuePlayerCommand(match, 'p1', commandB, 2), true);
 });
 
 runTest('snapshot exposes minimal match info', () => {

@@ -1,5 +1,8 @@
+import { NETWORK_MESSAGE_TEXT, NETWORK_MESSAGE_TYPE } from './network-messages.js';
+
 export function createMatchClient({
   serverUrl,
+  getSessionToken,
   onOpen,
   onClose,
   onError,
@@ -18,7 +21,7 @@ export function createMatchClient({
     };
     ws.onerror = (event) => {
       if (onError) onError(event);
-      reject(new Error('WebSocket connection failed'));
+      reject(new Error(NETWORK_MESSAGE_TEXT.SOCKET_CONNECTION_FAILED));
     };
     ws.onmessage = (event) => {
       if (!onMessage) return;
@@ -26,7 +29,7 @@ export function createMatchClient({
         const message = JSON.parse(event.data);
         onMessage(message);
       } catch {
-        onMessage({ type: 'error', message: 'invalid message payload' });
+        onMessage({ type: NETWORK_MESSAGE_TYPE.ERROR, message: NETWORK_MESSAGE_TEXT.INVALID_MESSAGE_PAYLOAD });
       }
     };
   });
@@ -43,13 +46,25 @@ export function createMatchClient({
     ws = null;
   };
 
+  const attachSession = (payload) => {
+    const sessionToken = getSessionToken ? getSessionToken() : null;
+    if (!sessionToken) return payload;
+    return { ...payload, sessionToken };
+  };
+
   return {
     connect,
     disconnect,
     send,
-    join: ({ matchId, playerId }) => send({ type: 'join', matchId, playerId }),
-    ready: (ready) => send({ type: 'ready', ready }),
-    command: (command, seq) => send({ type: 'command', command, seq }),
-    requestSnapshot: () => send({ type: 'snapshot_request' }),
+    join: ({ matchId, playerId, authToken, sessionToken }) => send({
+      type: NETWORK_MESSAGE_TYPE.JOIN,
+      matchId,
+      playerId,
+      ...(sessionToken ? { sessionToken } : {}),
+      ...(authToken ? { authToken } : {}),
+    }),
+    ready: (ready) => send(attachSession({ type: NETWORK_MESSAGE_TYPE.READY, ready })),
+    command: (command, seq) => send(attachSession({ type: NETWORK_MESSAGE_TYPE.COMMAND, command, seq })),
+    requestSnapshot: () => send(attachSession({ type: NETWORK_MESSAGE_TYPE.SNAPSHOT_REQUEST })),
   };
 }

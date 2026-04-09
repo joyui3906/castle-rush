@@ -1,4 +1,18 @@
 import { canBuild, canSell, enqueueCommand } from '../core/sim.js';
+import {
+  NETWORK_COMMAND_TEXT,
+  NETWORK_PLAYER_TEXT,
+  NETWORK_PHASE,
+} from '../net/network-messages.js';
+
+function formatPlayerTag(side, player, isLocalSide) {
+  if (!player) {
+    return `${side}: waiting`;
+  }
+  const ready = player.ready ? NETWORK_PLAYER_TEXT.READY : NETWORK_PLAYER_TEXT.NOT_READY;
+  const connected = player.connected ? NETWORK_PLAYER_TEXT.ONLINE : NETWORK_PLAYER_TEXT.OFFLINE;
+  return `${side}: ${player.playerId || NETWORK_PLAYER_TEXT.UNKNOWN_PLAYER} (${ready}, ${connected})${isLocalSide ? ` ${NETWORK_PLAYER_TEXT.YOU_TAG}` : ''}`;
+}
 
 function dispatchGameCommand(state, simControl, command) {
   if (simControl.isNetworkMode?.()) {
@@ -67,12 +81,24 @@ function renderControlsHtml(state, data, simControl) {
   const isNetworkMode = simControl.isNetworkMode?.() ?? false;
   const networkInfo = simControl.getNetworkInfo?.() ?? null;
   const buildOptions = Object.keys(data.buildingTypes);
+  const matchPhase = networkInfo?.matchPhase ?? networkInfo?.matchStatus ?? NETWORK_PHASE.OFFLINE;
+  const matchCanBuild = matchPhase === NETWORK_PHASE.RUNNING;
+  const canToggleReady = Boolean(networkInfo?.connected)
+    && Boolean(networkInfo?.side)
+    && matchPhase !== NETWORK_PHASE.FULL
+    && matchPhase !== NETWORK_PHASE.FINISHED
+    && networkInfo?.matchStatus !== NETWORK_PHASE.ERROR;
+  const localSide = networkInfo?.side;
+  const leftPlayer = networkInfo?.players?.left;
+  const rightPlayer = networkInfo?.players?.right;
   const rows = ['left', 'right'].map((side) => {
     const selectedSlotIndex = state.ui?.selectedBuildSlotBySide?.[side] ?? 0;
-    const canSellSelected = canSell(state, side, selectedSlotIndex);
+    const isOwnSide = !isNetworkMode || networkInfo?.side === side;
+    const canSellSelected = canSell(state, side, selectedSlotIndex) && (!isNetworkMode || (isOwnSide && matchCanBuild));
     const buttons = buildOptions.map((buildingTypeId) => {
       const cost = data.buildingTypes[buildingTypeId].cost;
-      const enabled = canBuild(state, data, side, buildingTypeId, selectedSlotIndex) && (!isNetworkMode || networkInfo?.side === side);
+      const enabled = canBuild(state, data, side, buildingTypeId, selectedSlotIndex)
+        && (!isNetworkMode || (isOwnSide && matchCanBuild));
       return makeBuildButton({ side, buildingTypeId, cost, enabled });
     }).join('');
 
@@ -94,8 +120,34 @@ function renderControlsHtml(state, data, simControl) {
     .filter((unitId) => state.units[unitId]?.hp > 0)
     .map((unitId) => `<option value="${unitId}" ${state.debug.selectedUnitId === unitId ? 'selected' : ''}>${unitId}</option>`)
     .join('');
+  const reconnectAttempts = networkInfo?.reconnectAttempts ?? 0;
+  const reconnectMaxAttempts = networkInfo?.reconnectMaxAttempts ?? 0;
+  const reconnectScheduledAtMs = networkInfo?.reconnectScheduledAtMs ?? null;
+  const reconnectScheduledDelayMs = networkInfo?.reconnectScheduledDelayMs ?? null;
+  const isMatchFull = networkInfo?.matchPhase === NETWORK_PHASE.FULL;
+  const reconnectRemainingSec = reconnectScheduledAtMs && reconnectScheduledDelayMs && !isMatchFull
+    ? Math.max(0, Math.ceil((reconnectScheduledDelayMs - (Date.now() - reconnectScheduledAtMs)) / 1000))
+    : null;
+  const reconnectLine = isMatchFull
+    ? NETWORK_COMMAND_TEXT.FULL_RECONNECT_PREFIX
+    : `${reconnectAttempts}/${reconnectMaxAttempts}`;
+  const reconnectCountdown = isMatchFull || !reconnectScheduledAtMs
+    ? '-'
+    : reconnectRemainingSec > 0
+      ? `${reconnectRemainingSec}s`
+      : '-';
+  const phaseLabel = isMatchFull ? NETWORK_PHASE.FULL : matchPhase;
+  const connectionLabel = isMatchFull
+    ? NETWORK_PHASE.FULL
+    : networkInfo?.connected ? `connected (${networkInfo?.side ?? 'spectator'})` : networkInfo?.connecting ? NETWORK_PHASE.CONNECTING : NETWORK_PHASE.OFFLINE;
+  const connectLabel = isMatchFull ? NETWORK_COMMAND_TEXT.RETRY_LABEL : NETWORK_COMMAND_TEXT.CONNECT_LABEL;
+  const hideErrorLine = isMatchFull;
+  const sessionTokenHint = networkInfo?.connectionHint
+    ? `<div class="controls-row">hint: ${networkInfo.connectionHint}</div>`
+    : '';
   const networkSection = isNetworkMode ? `
     <h2>Match Network</h2>
+    ${networkInfo?.reconnectBanner ? `<div class="controls-row"><strong style="color:#d9534f;">${networkInfo.reconnectBanner}</strong></div>` : ''}
     <div class="controls-row">
       <label>Server URL
         <input data-control="network-server-url" value="${networkInfo?.serverUrl ?? ''}" />
@@ -106,23 +158,37 @@ function renderControlsHtml(state, data, simControl) {
       <label>Player ID
         <input data-control="network-player-id" value="${networkInfo?.playerId ?? ''}" />
       </label>
+      <label>Match Auth Token
+        <input data-control="network-auth-token" value="${networkInfo?.authToken ?? ''}" type="password" autocomplete="off" />
+      </label>
+      <label>Session Token
+        <input data-control="network-session-token" value="${networkInfo?.sessionToken ?? ''}" autocomplete="off" />
+      </label>
     </div>
     <div class="controls-row">
-      <button data-action="network-connect" ${networkInfo?.connected || networkInfo?.connecting ? 'disabled' : ''}>Connect</button>
-      <button data-action="network-disconnect" ${networkInfo?.connected ? '' : 'disabled'}>Disconnect</button>
-      <button data-action="network-toggle-ready" ${networkInfo?.connected ? '' : 'disabled'}>${networkInfo?.ready ? 'Unready' : 'Ready'}</button>
-      <button data-action="network-snapshot" ${networkInfo?.connected ? '' : 'disabled'}>Snapshot</button>
-      <span>status: ${networkInfo?.connected ? `connected (${networkInfo?.side ?? 'spectator'})` : networkInfo?.connecting ? 'connecting' : 'offline'}</span>
-      ${networkInfo?.lastError ? `<span>error: ${networkInfo.lastError}</span>` : ''}
+      <button data-action="network-connect" ${networkInfo?.connected || networkInfo?.connecting || !networkInfo?.serverUrl || !networkInfo?.matchId || !networkInfo?.playerId ? 'disabled' : ''}>${connectLabel}</button>
+      <button data-action="network-disconnect" ${networkInfo?.connected ? '' : 'disabled'}>${NETWORK_COMMAND_TEXT.DISCONNECT_LABEL}</button>
+      <button data-action="network-toggle-ready" ${isMatchFull || !canToggleReady ? 'disabled' : ''}>${networkInfo?.ready ? NETWORK_COMMAND_TEXT.UNREADY_LABEL : NETWORK_COMMAND_TEXT.READY_LABEL}</button>
+      <button data-action="network-snapshot" ${isMatchFull || !networkInfo?.connected || !networkInfo?.side ? 'disabled' : ''}>${NETWORK_COMMAND_TEXT.SNAPSHOT_LABEL}</button>
+      <label><input type="checkbox" data-control="network-auto-ready" ${networkInfo?.autoReady ? 'checked' : ''} /> Auto ready</label>
+      <span>connection: ${connectionLabel}</span>
+      <span>phase: ${phaseLabel}</span>
+      ${hideErrorLine ? '' : networkInfo?.lastError ? `<span>error: ${networkInfo.lastError}</span>` : ''}
     </div>
     <div class="controls-row">
-      <span>matchStatus: ${networkInfo?.matchStatus ?? 'unknown'}</span>
+      <span>${formatPlayerTag('Left', leftPlayer, localSide === 'left')}</span>
+      <span>${formatPlayerTag('Right', rightPlayer, localSide === 'right')}</span>
+    </div>
+    <div class="controls-row">
       <span>serverTick: ${networkInfo?.lastServerTick ?? 0}</span>
       <span>stateTick: ${networkInfo?.lastStateTick ?? 0}</span>
       <span>rtt: ${networkInfo?.rttMs !== null && networkInfo?.rttMs !== undefined ? `${networkInfo.rttMs}ms` : '-'}</span>
       <span>pendingCmd: ${networkInfo?.pendingCommandCount ?? 0}</span>
       <span>lastSnapshot: ${networkInfo?.lastSnapshotAtMs ? `${Math.max(0, Math.floor((Date.now() - networkInfo.lastSnapshotAtMs) / 1000))}s ago` : '-'}</span>
+      <span>reconnect: ${reconnectLine}</span>
+      <span>nextRetry: ${networkInfo?.reconnectScheduledAtMs ? reconnectCountdown : '-'}</span>
     </div>
+    ${sessionTokenHint}
   ` : '';
 
   return `
@@ -290,6 +356,21 @@ export function setupControls(root, state, data, rerender, simControl) {
 
     if (control === 'network-player-id' && target instanceof HTMLInputElement) {
       simControl.updateNetworkConfig?.({ playerId: target.value });
+      return;
+    }
+
+    if (control === 'network-auth-token' && target instanceof HTMLInputElement) {
+      simControl.updateNetworkConfig?.({ authToken: target.value });
+      return;
+    }
+
+    if (control === 'network-session-token' && target instanceof HTMLInputElement) {
+      simControl.updateNetworkConfig?.({ sessionToken: target.value || null });
+      return;
+    }
+
+    if (control === 'network-auto-ready' && target instanceof HTMLInputElement) {
+      simControl.updateNetworkConfig?.({ autoReady: target.checked });
       return;
     }
 
