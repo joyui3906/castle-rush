@@ -1,0 +1,16 @@
+{
+  "name": "castle-rush",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:static": "node scripts/static-server.mjs",
+    "server:match": "node server/match-server.mjs",
+    "demo:ws-client": "node scripts/ws-client-demo.mjs",
+    "test:sim": "node scripts/test-sim.mjs",
+    "test:match": "node scripts/test-match.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

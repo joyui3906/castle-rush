@@ -36,6 +36,115 @@ button {
   margin-bottom: 0.75rem;
 }
 
+.slot-map {
+  margin: 0.4rem 0;
+  width: 100%;
+  max-width: 580px;
+}
+
+.slot-map-header,
+.slot-map-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.74rem;
+  opacity: 0.85;
+}
+
+.slot-map-canvas {
+  position: relative;
+  margin: 0.3rem 0;
+  height: 120px;
+  border: 1px solid #4b5563;
+  border-radius: 0.5rem;
+  background: linear-gradient(180deg, #0f172a 0%, #111827 48%, #0f172a 100%);
+  overflow: hidden;
+}
+
+.slot-map-center-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed #475569;
+}
+
+.slot-map-castle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  background: #020617;
+}
+
+.slot-map-castle-left {
+  left: 2px;
+}
+
+.slot-map-castle-right {
+  right: 2px;
+}
+
+.slot-cell {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #4b5563;
+  background: #0b1220;
+  color: #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-cell-index {
+  font-size: 0.62rem;
+}
+
+.slot-empty {
+  border-color: #64748b;
+}
+
+.slot-occupied {
+  border-color: #f59e0b;
+  background: #3f2d06;
+}
+
+.slot-selected {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 1px #22d3ee inset, 0 0 8px rgba(34, 211, 238, 0.6);
+}
+
+.legend-chip {
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid #4b5563;
+  margin-left: 0.3rem;
+}
+
+.legend-selected {
+  border-color: #22d3ee;
+}
+
+.legend-occupied {
+  border-color: #f59e0b;
+}
+
+.legend-empty {
+  border-color: #64748b;
+}
+
 .status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -52,4 +161,17 @@ button {
 
 .status-card h3 {
   margin-top: 0;
+}
+
+.battlefield-ascii {
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px solid #374151;
+  border-radius: 0.4rem;
+  background: #030712;
+  color: #d1d5db;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-x: auto;
 }
