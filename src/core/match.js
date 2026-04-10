@@ -44,23 +44,32 @@ function getCommandRejectReason(match, playerId, command) {
   }
 
   // Side-bound commands must match the command side to prevent spoofing.
-  if (command.type === 'build' || command.type === 'sell') {
+  if (command.type === 'build' || command.type === 'sell' || command.type === 'nuke') {
     const payload = command.payload;
     if (!payload || typeof payload.side !== 'string' || payload.side !== side) {
       return NETWORK_MESSAGE_TEXT.INVALID_COMMAND_SIDE;
     }
 
-    if (typeof payload.slotIndex !== 'number' || !Number.isInteger(payload.slotIndex) || payload.slotIndex < 0) {
-      return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
+    if (command.type === 'sell') {
+      if (typeof payload.slotIndex !== 'number' || !Number.isInteger(payload.slotIndex) || payload.slotIndex < 0) {
+        return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
+      }
+      return null;
     }
 
     if (command.type === 'build') {
+      if (typeof payload.slotIndex !== 'undefined' && payload.slotIndex !== null) {
+        if (typeof payload.slotIndex !== 'number' || !Number.isInteger(payload.slotIndex) || payload.slotIndex < 0) {
+          return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
+        }
+      }
       if (typeof payload.buildingTypeId !== 'string' || payload.buildingTypeId.length === 0) {
         return NETWORK_MESSAGE_TEXT.INVALID_COMMAND;
       }
       return null;
     }
 
+    if (command.type === 'nuke') return null;
     return null;
   }
 

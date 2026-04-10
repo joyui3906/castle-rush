@@ -169,6 +169,33 @@ node scripts/sim-report.mjs
 - Reconnect countdown now uses a dedicated state helper (`setReconnectCountdown`) and auto-clears stale countdown state on expiry.
 - `full` 상태에서도 `Connect` 버튼을 `Retry`로 노출해 수동 재시도 UX를 허용한다.
 
+### 6.1 Network checkpoint (2026-04-10)
+- 네트워크는 네트워크 쪽 UX/재연결/세션 토큰 보존 흐름을 중심으로 현재 상태를 기록으로 둔 뒤, 이번 구간에서는 오프라인 전투/게임플레이 개선으로 이동함.
+- 네트워크는 기존 상태 분기( `full`/`error`/`offline` ) 유지, 자동 재접속은 수동 전환점은 건드리지 않고 재사용.
+- `sessionToken` 요구/불일치/교체 메시지 케이스는 기존 핸들러에 반영해 토큰 유지 정책을 통일 처리.
+
+### 6.2 Single-player local mode (진행중)
+- `?single=1` 또는 `?solo=1`로 진입하면 로컬 싱글 모드가 활성화됨.
+- `?single`/`?solo` 플래그가 파라미터로 존재하면 값과 무관하게 싱글 모드가 활성화됨.
+- `humanSide=left|right` 쿼리로 조작 측을 지정할 수 있음(`humanSide=left` 기본).
+- `aiProfile=econ|balanced|aggressive`로 AI 빌드 성향을 선택할 수 있음(`balanced` 기본).
+  - `econ`: 초반부터 수익 건물을 더 많이 깔아 확장 기반을 만듦 (`income_mine` 목표 4개)
+  - `balanced`: 수익/군사 건물 균형 유지
+  - `aggressive`: 초반 군사 건물을 더 빠르게 쌓아 압박을 우선시 (`barracks` 목표 4개, `splash_tower` 목표 3개)
+- 싱글 모드에서는 조작 측이 아닌 편은 AI가 고정 큐 + 폴백 규칙으로 빌드 진행.
+- 자동 빌드/수동 빌드 정책은 `src/main.js`의 `SINGLE_PLAYER_AI_PLAN`과 `runSinglePlayerAIActions`/`getSinglePlayerAiFallbackType`으로 조정 가능.
+- 실행 예시
+  - `/?single`
+  - `/?solo&humanSide=right&aiProfile=aggressive`
+
+### 6.3 Visualization pass (진행중)
+- 렌더 화면에 다음 지표를 추가해 가독성 개선
+  - AI 프로필/남은 스크립트 단계 표시
+  - 좌우 성능 게이지(HP/유닛 수) 기반 텍스트 바
+  - 경기 상태 카드에 상태/시간/큐/위상 요약
+  - ASCII 전장 legend 문구 정리
+  - 골드 수급/소모 미니 타임라인 추가(최근 10틱): 좌우 라인으로 +/− 변화량 시각화
+
 ## 7. Open TODO (Recommended Next Steps)
 1. Security hardening
 - simple auth/session token instead of raw `playerId`.
@@ -206,7 +233,24 @@ node scripts/sim-report.mjs
   - `stateDelta` (delta payload for non-snapshot ticks)
 - `error`: includes `message` (and optional `seq`)
 
-## 9. Notes for Next Model
+## 9. Work Log (2026-04-10)
+- 오늘 진행(네트워크/승패체감/밸런스)
+  - 폭격(일회성 전역 스킬) 기능을 네트워크/오프라인 흐름에서 이어서 정리.
+  - `src/ui/controls.js`에서 네트워크 모드 폭격 버튼 클릭 시 낙관적 즉시 반응 적용:
+    - 명령 전송 성공 시 로컬 상태로 `nukeUsed` 즉시 갱신
+    - `nukeEffect` 즉시 표시
+    - 상대 진영 유닛 `hp`를 즉시 제거해 화면에 즉시 반영
+  - `src/core/sim.js` 및 `src/main.js`는 네트워크 스냅샷/델타에서 폭격 상태 반영을 유지해 정합성 확보.
+  - 렌더 쪽은 `src/render/render.js`에서 폭격 연출/최근 이벤트 표시 연계가 이미 적용된 상태를 확인.
+  - 유저 체감상 궁수(Building) 중심 빌드가 과도하게 강했으나, 유닛 직접 스탯 수정은 요청대로 보류.
+  - 대신 건물 레벨 보정으로만 조정:
+    - `src/data/game-data.js` `range_tower`  
+      - `cost: 90 → 100`
+      - `spawnEveryTicks: 6 → 7`
+  - 테스트는 이번 세션에서 실행하지 않음(변경 사항 반영 후 다음 세션에서 샘플 매치 검증 권장).
+  - 현재까지의 오픈 이슈: 궁수 과강함 체감이 완전 해소되지 않을 수 있어 추가 튜닝은 샘플 매치 피드백 기반으로 1~2 단계만 진행 예정.
+
+## 10. Notes for Next Model
 - Prefer adding features through command model (`enqueueCommand`) rather than direct state mutation.
 - Keep deterministic behavior unless explicitly deciding otherwise.
 - Respect AGENTS.md constraints: small scoped changes, minimal dependencies, readable architecture.

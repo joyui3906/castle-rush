@@ -46,8 +46,12 @@ export const GAME_DATA = {
       personalSpace: 1.2,
       blockAheadDistance: 2.2,
       sidestepDistance: 0.9,
-      sidestepBlockedTicks: 2,
+      sidestepBlockedTicks: 1,
       sidestepCooldownTicks: 2,
+      lateralSpreadRadius: 2.4,
+      lateralSpreadStrength: 0.22,
+      lateralStep: 0.55,
+      yRecoverySpeed: 0.12,
     },
     comebackSpawn: {
       enabled: true,
@@ -103,10 +107,10 @@ export const GAME_DATA = {
     range_tower: {
       id: 'range_tower',
       role: 'spawn',
-      cost: 90,
+      cost: 100,
       maxHp: 230,
       spawnUnitTypeId: 'archer',
-      spawnEveryTicks: 6,
+      spawnEveryTicks: 7,
     },
     tank_forge: {
       id: 'tank_forge',

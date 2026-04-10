@@ -10,8 +10,15 @@
     <main>
       <h1>Castle Rush (Prototype)</h1>
       <p>Single-lane offline auto-battle simulation scaffold.</p>
-      <div id="controls"></div>
-      <div id="app"></div>
+      <section class="workspace">
+        <section class="battle-shell" aria-label="Battle field and game state">
+          <div id="app"></div>
+          <section class="controls-panel">
+            <h2>Controls · Game actions</h2>
+            <div id="controls"></div>
+          </section>
+        </section>
+      </section>
     </main>
     <script type="module" src="src/main.js"></script>
   </body>

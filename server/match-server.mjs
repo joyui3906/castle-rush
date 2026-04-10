@@ -43,6 +43,8 @@ function extractState(match) {
     events: match.state.events,
     units: match.state.units,
     nextUnitId: match.state.nextUnitId,
+    nukeEffect: match.state.ui?.nukeEffect ?? null,
+    nukeUsed: match.state.ui?.nukeUsed ?? { left: false, right: false },
   };
 }
 
@@ -82,6 +84,12 @@ function diffMatchState(previous, next) {
   }
   if (previous.nextUnitId !== next.nextUnitId) {
     delta.nextUnitId = next.nextUnitId;
+  }
+  if (!isDeepEqual(previous.nukeEffect, next.nukeEffect)) {
+    delta.nukeEffect = next.nukeEffect;
+  }
+  if (!isDeepEqual(previous.nukeUsed, next.nukeUsed)) {
+    delta.nukeUsed = next.nukeUsed;
   }
 
   const previousUnits = previous.units ?? {};

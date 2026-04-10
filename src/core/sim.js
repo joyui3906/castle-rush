@@ -35,6 +35,7 @@ function createUnitState(unitId, side, typeId, unitType, startPosition, y) {
     attack: unitType.attack,
     range: unitType.range,
     speed: unitType.speed,
+    homeY: y,
     splashRadius: unitType.splashRadius ?? 0,
     splashRatio: unitType.splashRatio ?? 0,
     position: startPosition,
@@ -43,6 +44,8 @@ function createUnitState(unitId, side, typeId, unitType, startPosition, y) {
     sidestepCooldown: 0,
   };
 }
+
+const GOLD_TIMELINE_MAX_POINTS = 11;
 
 export function createInitialState(data) {
   const leftCastle = createCastleState(data.castles.left, data.config.startingGold);
@@ -76,9 +79,20 @@ export function createInitialState(data) {
       selectedUnitId: null,
     },
     ui: {
+      nukeUsed: {
+        left: false,
+        right: false,
+      },
+      nukeEffect: null,
       selectedBuildSlotBySide: {
         left: 0,
         right: 0,
+      },
+      singleMode: {
+        enabled: false,
+        humanSide: 'left',
+        aiSide: 'right',
+        aiBuildPlan: [],
       },
       network: {
         enabled: false,
@@ -111,6 +125,15 @@ export function createInitialState(data) {
         lastSnapshotAtMs: null,
         lastStateTick: 0,
         lastServerTick: 0,
+      },
+      goldTimeline: {
+        points: [{
+          tick: 0,
+          leftGold: data.config.startingGold,
+          rightGold: data.config.startingGold,
+          leftDelta: 0,
+          rightDelta: 0,
+        }],
       },
     },
     commandQueue: [],
@@ -217,6 +240,31 @@ function getBuildingMaxHp(data, buildingTypeId) {
   return data.buildingTypes[buildingTypeId]?.maxHp ?? 250;
 }
 
+function appendGoldTimelinePoint(state, beforeLeftGold, beforeRightGold) {
+  if (!state?.ui) return;
+  if (!Array.isArray(state.ui.goldTimeline?.points)) {
+    state.ui.goldTimeline = {
+      points: [],
+    };
+  }
+
+  const leftGold = state.castles?.left?.gold ?? beforeLeftGold ?? 0;
+  const rightGold = state.castles?.right?.gold ?? beforeRightGold ?? 0;
+  const points = state.ui.goldTimeline.points;
+
+  points.push({
+    tick: state.tick,
+    leftGold,
+    rightGold,
+    leftDelta: leftGold - beforeLeftGold,
+    rightDelta: rightGold - beforeRightGold,
+  });
+
+  if (points.length > GOLD_TIMELINE_MAX_POINTS) {
+    points.shift();
+  }
+}
+
 function isAliveBuilding(slot) {
   return Boolean(slot?.buildingTypeId && slot.buildingHp > 0);
 }
@@ -267,6 +315,37 @@ export function canSell(state, side, slotIndex) {
   const castle = state.castles[side];
   const slot = getBuildSlot(castle, slotIndex);
   return isAliveBuilding(slot);
+}
+
+export function canUseNuke(state, side) {
+  return side === 'left' || side === 'right'
+    ? state?.ui?.nukeUsed?.[side] !== true
+    : false;
+}
+
+function applyNukeCommand(state, data, payload) {
+  const { side } = payload ?? {};
+  if (!canUseNuke(state, side)) return false;
+  if (side !== 'left' && side !== 'right') return false;
+
+  const opponent = side === 'left' ? 'right' : 'left';
+  let removedCount = 0;
+
+  for (const unitId of state.battleLane.unitIds) {
+    const unit = state.units[unitId];
+    if (!unit || unit.side !== opponent || !unit.hp) continue;
+    unit.hp = 0;
+    removedCount += 1;
+  }
+
+  state.ui.nukeUsed[side] = true;
+  state.ui.nukeEffect = {
+    side,
+    startedAtTick: state.tick,
+    durationTicks: 3,
+  };
+  pushEvent(state, `${side} cast nuke from ${side} side (-${removedCount} enemy unit(s))`);
+  return true;
 }
 
 export function sellBuilding(state, data, side, slotIndex) {
@@ -328,6 +407,10 @@ export function processCommandQueue(state, data) {
     }
     if (command.type === 'sell') {
       applySellCommand(state, data, command.payload);
+      continue;
+    }
+    if (command.type === 'nuke') {
+      applyNukeCommand(state, data, command.payload);
       continue;
     }
     if (command.type === 'toggle_rule') {
@@ -466,24 +549,101 @@ function moveTowardEnemyCastle(unit, data) {
   }
 }
 
-function isBlockedByAlly(unit, unitsSnapshot, data) {
+function getNearestAllyAheadDistance(unit, unitsSnapshot, data) {
   const { personalSpace, blockAheadDistance } = getMovementConfig(data);
   const allies = unitsSnapshot.filter((other) => other.side === unit.side && other.id !== unit.id);
-  if (allies.length === 0) return false;
+  if (allies.length === 0) return null;
+
+  let nearestDistance = null;
 
   if (unit.side === 'left') {
-    return allies.some((ally) => {
+    for (const ally of allies) {
       const dx = ally.position - unit.position;
       const dy = Math.abs(ally.y - unit.y);
-      return dx > 0 && dx <= (unit.speed + blockAheadDistance) && dy <= personalSpace;
-    });
+      if (dx <= 0 || dx > (unit.speed + blockAheadDistance) || dy > personalSpace) continue;
+      if (nearestDistance === null || dx < nearestDistance) {
+        nearestDistance = dx;
+      }
+    }
+    return nearestDistance;
   }
 
-  return allies.some((ally) => {
+  for (const ally of allies) {
     const dx = unit.position - ally.position;
     const dy = Math.abs(ally.y - unit.y);
-    return dx > 0 && dx <= (unit.speed + blockAheadDistance) && dy <= personalSpace;
-  });
+    if (dx <= 0 || dx > (unit.speed + blockAheadDistance) || dy > personalSpace) continue;
+    if (nearestDistance === null || dx < nearestDistance) {
+      nearestDistance = dx;
+    }
+  }
+
+  return nearestDistance;
+}
+
+function isBlockedByAlly(unit, unitsSnapshot, data) {
+  return getNearestAllyAheadDistance(unit, unitsSnapshot, data) !== null;
+}
+
+function moveTowardEnemyCastleByDistance(unit, data, distance) {
+  if (distance <= 0) return { ...unit };
+
+  if (unit.side === 'left') {
+    return {
+      ...unit,
+      position: Math.min(unit.position + distance, data.battleLane.rightCastlePosition),
+    };
+  }
+
+  return {
+    ...unit,
+    position: Math.max(unit.position - distance, data.battleLane.leftCastlePosition),
+  };
+}
+
+function recoverUnitYPosition(unit, data) {
+  const recovery = getMovementConfig(data).yRecoverySpeed ?? 0.2;
+  if (!Number.isFinite(recovery) || recovery <= 0 || unit.homeY === undefined) return;
+
+  const delta = unit.homeY - unit.y;
+  if (Math.abs(delta) <= recovery) {
+    unit.y = unit.homeY;
+    return;
+  }
+
+  unit.y += delta > 0 ? recovery : -recovery;
+}
+
+function applyLateralSpread(unitsSnapshot, data) {
+  const config = getMovementConfig(data);
+  const roadHalfWidth = config.roadHalfWidth ?? 6;
+  const spreadRadius = config.lateralSpreadRadius ?? 2.4;
+  const spreadStrength = config.lateralSpreadStrength ?? 0.22;
+
+  for (const unit of unitsSnapshot) {
+    let force = 0;
+    let neighborCount = 0;
+
+    for (const other of unitsSnapshot) {
+      if (other.id === unit.id) continue;
+      if (other.side !== unit.side) continue;
+
+      const dx = Math.abs(other.position - unit.position);
+      if (dx > spreadRadius * 2.1) continue;
+      const dy = unit.y - other.y;
+      const absDy = Math.abs(dy);
+      if (absDy >= spreadRadius || absDy < 0.001) continue;
+
+      const normalized = (spreadRadius - absDy) / spreadRadius;
+      const influence = normalized * normalized;
+      force += dy > 0 ? influence : -influence;
+      neighborCount += 1;
+    }
+
+    if (neighborCount === 0) continue;
+
+    const nextY = clampY(unit.y + force * spreadStrength, roadHalfWidth - 0.35);
+    unit.y = nextY;
+  }
 }
 
 function canOccupyY(unit, nextY, unitsSnapshot, data) {
@@ -500,20 +660,50 @@ function maybeSidestepWhenBlocked(unit, unitsSnapshot, data) {
   const config = getMovementConfig(data);
   if (unit.blockedTicks < config.sidestepBlockedTicks) return false;
   if (unit.sidestepCooldown > 0) return false;
-
-  const sideSeed = hashText(unit.id) % 2 === 0 ? 1 : -1;
-  const directions = [sideSeed, -sideSeed];
-
-  for (const direction of directions) {
-    const desiredY = clampY(unit.y + (direction * config.sidestepDistance), config.roadHalfWidth);
-    if (!canOccupyY(unit, desiredY, unitsSnapshot, data)) continue;
-    unit.y = desiredY;
-    unit.blockedTicks = 0;
-    unit.sidestepCooldown = config.sidestepCooldownTicks;
-    return true;
+  const roadHalfWidth = config.roadHalfWidth ?? 6;
+  const personalSpace = config.personalSpace ?? 1.2;
+  const seen = new Set();
+  const candidates = [];
+  const gridStep = config.lateralStep ?? 0.6;
+  const halfWidthSafe = roadHalfWidth - 0.25;
+  for (let y = -halfWidthSafe; y <= halfWidthSafe; y += gridStep) {
+    candidates.push(y);
   }
 
-  return false;
+  let bestY = null;
+  let bestPenalty = Number.POSITIVE_INFINITY;
+
+  for (const candidateY of candidates) {
+    const key = candidateY.toFixed(3);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    if (!canOccupyY(unit, candidateY, unitsSnapshot, data)) continue;
+
+    let penalty = 0;
+    for (const other of unitsSnapshot) {
+      if (other.id === unit.id || other.side !== unit.side) continue;
+      const dist = distance2d(other.position, other.y, unit.position, candidateY);
+      if (dist < personalSpace * 1.5) {
+        penalty += 1;
+      }
+    }
+    penalty += Math.abs(candidateY - (unit.homeY ?? unit.y)) * 0.08;
+    const deltaToCurrent = Math.abs(candidateY - unit.y);
+    penalty += deltaToCurrent * 0.12;
+
+    if (penalty < bestPenalty) {
+      bestPenalty = penalty;
+      bestY = candidateY;
+    }
+  }
+
+  if (bestY === null) return false;
+
+  unit.y = bestY;
+  unit.blockedTicks = 0;
+  unit.sidestepCooldown = config.sidestepCooldownTicks;
+  return true;
 }
 
 function getCastleDefenseBonus(unit, data) {
@@ -584,6 +774,7 @@ function resolveCombatAndMovement(state, data) {
   const unitsSnapshot = state.battleLane.unitIds
     .map((id) => state.units[id])
     .filter(isAliveUnit);
+  applyLateralSpread(unitsSnapshot, data);
 
   const pendingDamage = new Map();
   const pendingBuildingDamage = new Map();
@@ -628,19 +819,43 @@ function resolveCombatAndMovement(state, data) {
       continue;
     }
 
-    const blocked = isBlockedByAlly(unit, unitsSnapshot, data);
-    if (blocked) {
+    const blockedDistance = getNearestAllyAheadDistance(unit, unitsSnapshot, data);
+    if (blockedDistance !== null) {
       unit.blockedTicks += 1;
       if (unit.sidestepCooldown > 0) unit.sidestepCooldown -= 1;
       const sidestepped = maybeSidestepWhenBlocked(unit, unitsSnapshot, data);
       if (sidestepped) {
         pushEvent(state, `${unit.id} sidestepped to y ${unit.y.toFixed(1)}`);
+        unit.blockedTicks = 0;
+      } else {
+        const movement = getMovementConfig(data);
+        const safeGap = Math.max(0.25, movement.personalSpace * 0.6);
+        const maxForward = Math.max(0, blockedDistance - safeGap);
+        if (maxForward > 0) {
+          const step = Math.min(unit.speed, maxForward);
+          const moved = moveTowardEnemyCastleByDistance(unit, data, step);
+          if (moved.position !== unit.position) {
+            pendingMoves.set(unit.id, moved);
+            unit.blockedTicks = 0;
+            continue;
+          }
+        }
+
+        const creep = Math.min(unit.speed * 0.25, blockedDistance * 0.8, 0.22);
+        if (creep > 0.03) {
+          const moved = moveTowardEnemyCastleByDistance(unit, data, creep);
+          if (moved.position !== unit.position) {
+            pendingMoves.set(unit.id, moved);
+            unit.blockedTicks = 0;
+          }
+        }
       }
       continue;
     }
 
     const moved = { ...unit };
     moveTowardEnemyCastle(moved, data);
+    recoverUnitYPosition(moved, data);
     unit.blockedTicks = 0;
     if (unit.sidestepCooldown > 0) unit.sidestepCooldown -= 1;
     pendingMoves.set(unit.id, moved);
@@ -763,7 +978,13 @@ function updateWinner(state, data) {
   }
 
   if (state.tick >= data.config.maxTicks) {
-    state.winner = left.hp === right.hp ? 'draw' : left.hp > right.hp ? 'left' : 'right';
+    if (left.hp > right.hp) {
+      state.winner = 'left';
+    } else if (right.hp > left.hp) {
+      state.winner = 'right';
+    } else {
+      state.winner = 'draw';
+    }
     pushEvent(state, `result: ${state.winner} by max tick`);
   }
 }
@@ -774,6 +995,8 @@ export function tick(state, data) {
 
   state.tick += 1;
   state.timeMs += data.config.tickMs;
+  const beforeLeftGold = state.castles.left?.gold ?? 0;
+  const beforeRightGold = state.castles.right?.gold ?? 0;
 
   applyGoldIncome(state, data);
   spawnUnits(state, data);
@@ -781,5 +1004,13 @@ export function tick(state, data) {
   resolveCombatAndMovement(state, data);
   applyCastleDamageFromReachedUnits(state, data);
   cleanupDeadUnits(state);
+  appendGoldTimelinePoint(state, beforeLeftGold, beforeRightGold);
+  const nukeEffect = state?.ui?.nukeEffect;
+  if (nukeEffect && typeof nukeEffect.startedAtTick === 'number') {
+    const duration = nukeEffect.durationTicks ?? 3;
+    if (state.tick - nukeEffect.startedAtTick >= duration) {
+      state.ui.nukeEffect = null;
+    }
+  }
   updateWinner(state, data);
 }
